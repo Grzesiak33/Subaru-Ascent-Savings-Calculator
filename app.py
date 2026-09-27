@@ -222,6 +222,18 @@ st.markdown(
                 padding-left: .65rem !important;
                 padding-right: .65rem !important;
             }
+            [data-testid="stNumberInput"] input,
+            [data-testid="stDateInput"] input {
+                min-height: 48px !important;
+                font-size: 16px !important;
+            }
+            [data-baseweb="select"] > div {
+                min-height: 48px !important;
+                font-size: 16px !important;
+            }
+            [data-testid="stExpander"] {
+                border-radius: 18px !important;
+            }
             .whiteboard-title {
                 font-size: 1.15rem;
                 margin-top: 0;
@@ -280,44 +292,103 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-# ---------- Sidebar inputs ----------
-st.sidebar.header("💗 Build the plan")
+# ---------- Mobile-friendly inputs ----------
+st.markdown("## 💗 Build the plan")
+st.caption("Tap any number below to change it. Everything on the page recalculates instantly.")
 
-st.sidebar.subheader("💰 Savings")
-current_saved = st.sidebar.number_input(
-    "Current balance right now",
-    min_value=0.0,
-    value=0.0,
-    step=50.0,
-    format="%.0f",
-    help="Update this when a real deposit hits the car fund. The live balance graphic updates instantly.",
-)
-down_payment_goal = st.sidebar.number_input(
-    "Down payment goal",
-    min_value=500.0,
-    value=4000.0,
-    step=250.0,
-    format="%.0f",
-)
-biweekly_amount = st.sidebar.number_input(
-    "Recurring deposit every 2 weeks",
-    min_value=0.0,
-    value=300.0,
-    step=25.0,
-    format="%.0f",
-)
-first_deposit = st.sidebar.date_input("Next / first recurring deposit", value=date(2026, 10, 2))
-target_date = st.sidebar.date_input("Target purchase date", value=date(2026, 12, 19))
+with st.expander("✏️ Change savings, car price, and financing", expanded=True):
+    save_col, car_col, finance_col = st.columns(3, gap="large")
 
-st.sidebar.subheader("🚙 Subaru target")
-car_price = st.sidebar.number_input("Negotiated vehicle price", min_value=5000.0, value=21000.0, step=250.0, format="%.0f")
-sales_tax_pct = st.sidebar.number_input("Sales tax %", min_value=0.0, max_value=15.0, value=6.0, step=0.1)
-fees = st.sidebar.number_input("Title / registration / dealer fees", min_value=0.0, value=500.0, step=50.0, format="%.0f")
-trade_credit = st.sidebar.number_input("Trade-in / other credit", min_value=0.0, value=0.0, step=250.0, format="%.0f")
+    with save_col:
+        st.markdown("### 💰 Savings")
+        current_saved = st.number_input(
+            "Current balance right now",
+            min_value=0.0,
+            value=0.0,
+            step=50.0,
+            format="%.0f",
+            help="Update this when a real deposit hits the car fund.",
+            key="current_saved",
+        )
+        down_payment_goal = st.number_input(
+            "Down payment goal",
+            min_value=500.0,
+            value=4000.0,
+            step=250.0,
+            format="%.0f",
+            key="down_payment_goal",
+        )
+        biweekly_amount = st.number_input(
+            "Recurring deposit every 2 weeks",
+            min_value=0.0,
+            value=300.0,
+            step=25.0,
+            format="%.0f",
+            key="biweekly_amount",
+        )
+        first_deposit = st.date_input(
+            "Next / first recurring deposit",
+            value=date(2026, 10, 2),
+            key="first_deposit",
+        )
+        target_date = st.date_input(
+            "Target purchase date",
+            value=date(2026, 12, 19),
+            key="target_date",
+        )
 
-st.sidebar.subheader("💳 Financing")
-apr = st.sidebar.number_input("APR %", min_value=0.0, max_value=35.0, value=19.10, step=0.25, help="Starting placeholder based on Experian Q2 2026 average used-auto APR for the 501–600 VantageScore band. Replace this with your actual prequalification APR.")
-term_months = st.sidebar.selectbox("Loan term", options=[36, 48, 60, 66, 72, 75, 84], index=4)
+    with car_col:
+        st.markdown("### 🚙 Subaru target")
+        car_price = st.number_input(
+            "Negotiated vehicle price",
+            min_value=5000.0,
+            value=21000.0,
+            step=250.0,
+            format="%.0f",
+            key="car_price",
+        )
+        sales_tax_pct = st.number_input(
+            "Sales tax %",
+            min_value=0.0,
+            max_value=15.0,
+            value=6.0,
+            step=0.1,
+            key="sales_tax_pct",
+        )
+        fees = st.number_input(
+            "Title / registration / dealer fees",
+            min_value=0.0,
+            value=500.0,
+            step=50.0,
+            format="%.0f",
+            key="fees",
+        )
+        trade_credit = st.number_input(
+            "Trade-in / other credit",
+            min_value=0.0,
+            value=0.0,
+            step=250.0,
+            format="%.0f",
+            key="trade_credit",
+        )
+
+    with finance_col:
+        st.markdown("### 💳 Financing")
+        apr = st.number_input(
+            "APR %",
+            min_value=0.0,
+            max_value=35.0,
+            value=19.10,
+            step=0.25,
+            help="Replace this planning placeholder with your actual prequalification APR.",
+            key="apr",
+        )
+        term_months = st.selectbox(
+            "Loan term",
+            options=[36, 48, 60, 66, 72, 75, 84],
+            index=4,
+            key="term_months",
+        )
 
 # ---------- Calculations ----------
 deposit_dates = biweekly_dates(first_deposit, target_date)
