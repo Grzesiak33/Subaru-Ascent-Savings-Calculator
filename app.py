@@ -216,6 +216,32 @@ st.markdown(
             font-size: 2rem;
             margin-top: .2rem;
         }
+        @media (max-width: 640px) {
+            .block-container {
+                padding-top: .55rem !important;
+                padding-left: .65rem !important;
+                padding-right: .65rem !important;
+            }
+            .whiteboard-title {
+                font-size: 1.15rem;
+                margin-top: 0;
+            }
+            .whiteboard-subtitle {
+                font-size: .85rem;
+                margin-bottom: .2rem;
+            }
+            .board-note {
+                margin-bottom: .15rem;
+            }
+            .hero {
+                padding: 1.15rem 1rem;
+                margin-top: .45rem;
+            }
+            .hero h1 {
+                font-size: 1.75rem;
+            }
+        }
+
         .blue-chip {
             display: inline-block;
             background: #DDF4FF;
@@ -233,31 +259,27 @@ st.markdown(
 )
 
 # ---------- Hero ----------
-hero_text, board_col = st.columns([0.92, 1.35], gap="large", vertical_alignment="center")
-
-with hero_text:
-    st.markdown(
-        """
-        <div class="hero">
-            <div class="hero-kicker">December car goal</div>
-            <h1>💗 Ashlee's Subaru Ascent Fund</h1>
-            <p>Every deposit moves the goal from “someday” to a real down payment, a lower amount financed, and a payment you can see before dealership day.</p>
-            <div class="hero-love">Cotton-candy colors. Real numbers. Her future Ascent. ✨</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+# Mobile-first: put the visualization first so Ashlee + the Ascent are visible immediately.
+with st.container(border=True):
+    st.markdown('<div class="whiteboard-title">🖊️ Visualization Board</div>', unsafe_allow_html=True)
+    st.markdown('<div class="whiteboard-subtitle">Ashlee + her future Subaru Ascent 💗🚙</div>', unsafe_allow_html=True)
+    st.image(
+        "assets/ChatGPT Image Sep 27, 2026, 04_18_11 PM.png",
+        use_container_width=True,
     )
+    st.markdown('<div class="board-note">See it. Fund it. Drive it. 💗💙</div>', unsafe_allow_html=True)
 
-with board_col:
-    with st.container(border=True):
-        st.markdown('<div class="whiteboard-title">🖊️ Visualization Board</div>', unsafe_allow_html=True)
-        st.markdown('<div class="whiteboard-subtitle">Ashlee + the goal we are building toward</div>', unsafe_allow_html=True)
-        st.image(
-            "assets/ChatGPT Image Sep 27, 2026, 04_18_11 PM.png",
-            caption="Ashlee + her future Subaru Ascent 💗🚙",
-            use_container_width=True,
-        )
-        st.markdown('<div class="board-note">See it. Fund it. Drive it. 💗💙</div>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="hero">
+        <div class="hero-kicker">December car goal</div>
+        <h1>💗 Ashlee's Subaru Ascent Fund</h1>
+        <p>Every deposit moves the goal from “someday” to a real down payment, a lower amount financed, and a payment you can see before dealership day.</p>
+        <div class="hero-love">Cotton-candy colors. Real numbers. Her future Ascent. ✨</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 # ---------- Sidebar inputs ----------
 st.sidebar.header("💗 Build the plan")
 
