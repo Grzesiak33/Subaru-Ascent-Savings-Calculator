@@ -45,30 +45,70 @@ def total_interest(payment: float, months: int, principal: float) -> float:
 st.markdown(
     """
     <style>
-        .stApp { background: linear-gradient(180deg, #f7fafc 0%, #eef3f7 100%); }
+        :root {
+            --pink-dark: #5A163A;
+            --pink-deep: #7A1F4E;
+            --pink: #D9468B;
+            --pink-bright: #F062A6;
+            --pink-soft: #F9C8DD;
+            --blush: #FFF1F7;
+            --cream: #FFFDFB;
+            --plum: #3E2434;
+            --teal: #1E6F74;
+        }
+        .stApp {
+            background: radial-gradient(circle at top right, rgba(240,98,166,.16), transparent 30%), linear-gradient(180deg, #FFF5FA 0%, #FFFDFB 48%, #FCEEF5 100%);
+            color: #332831;
+        }
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #5A163A 0%, #8C2859 52%, #3E2434 100%);
+        }
+        [data-testid="stSidebar"] * { color: white; }
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] [data-baseweb="select"] > div {
+            background: rgba(255,255,255,.11) !important;
+            border-color: rgba(255,255,255,.24) !important;
+        }
         .hero {
-            padding: 1.2rem 1.4rem;
-            border-radius: 22px;
-            background: linear-gradient(135deg, #0d3557 0%, #1d608f 60%, #2c7fb2 100%);
+            padding: 2rem 1.8rem;
+            border-radius: 26px;
+            background: linear-gradient(135deg, #5A163A 0%, #A8326B 55%, #F062A6 100%);
             color: white;
             margin-bottom: 1rem;
-            box-shadow: 0 10px 30px rgba(13,53,87,.18);
+            box-shadow: 0 16px 38px rgba(90,22,58,.22);
         }
-        .hero h1 { margin: 0; font-size: 2.25rem; }
-        .hero p { margin: .4rem 0 0 0; opacity: .92; }
+        .hero-kicker {
+            display: inline-block;
+            padding: .35rem .7rem;
+            border-radius: 999px;
+            background: rgba(255,255,255,.16);
+            border: 1px solid rgba(255,255,255,.24);
+            font-weight: 800;
+            font-size: .78rem;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            margin-bottom: .75rem;
+        }
+        .hero h1 { margin: 0; font-size: 2.65rem; line-height: 1.03; color: white; }
+        .hero p { margin: .65rem 0 0 0; opacity: .94; font-size: 1.02rem; }
+        .hero-love { margin-top: .95rem; color: #FFE4F0; font-weight: 800; }
         .metric-card {
-            background: white;
-            border: 1px solid #dce6ee;
-            border-radius: 18px;
+            background: rgba(255,255,255,.95);
+            border: 1px solid #F0C0D5;
+            border-radius: 20px;
             padding: 1rem 1.1rem;
             min-height: 130px;
-            box-shadow: 0 5px 18px rgba(25,58,82,.07);
+            box-shadow: 0 8px 22px rgba(90,22,58,.08);
         }
-        .metric-label { color: #5e6b75; font-size: .86rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
-        .metric-value { color: #0d3557; font-size: 2rem; font-weight: 800; margin-top: .25rem; }
-        .metric-note { color: #60717e; font-size: .86rem; margin-top: .25rem; }
-        .good { color: #19704a; font-weight: 800; }
-        .small-note { color: #657783; font-size: .85rem; }
+        .metric-label { color: #86566D; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+        .metric-value { color: #5A163A; font-size: 2rem; font-weight: 900; margin-top: .25rem; }
+        .metric-note { color: #725D68; font-size: .86rem; margin-top: .25rem; }
+        h1, h2, h3, h4 { color: #5A163A; }
+        [data-testid="stMetricValue"] { color: #5A163A; }
+        [data-testid="stMetricDelta"] { color: #1E6F74 !important; }
+        div[data-testid="stProgress"] > div > div > div > div { background-color: #D9468B; }
+        .good { color: #1E6F74; font-weight: 800; }
+        .small-note { color: #725D68; font-size: .85rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -80,8 +120,10 @@ with left:
     st.markdown(
         """
         <div class="hero">
-            <h1>🚙 Ashlee's Subaru Ascent Fund</h1>
-            <p>See exactly what biweekly saving does to the down payment, amount financed, monthly payment, and total interest before December.</p>
+            <div class="hero-kicker">December car goal</div>
+            <h1>💗 Ashlee's Subaru Ascent Fund</h1>
+            <p>Build the down payment every two weeks and see exactly how each deposit changes the payment before you walk into the dealership.</p>
+            <div class="hero-love">Pink dashboard. Sensible SUV. Smarter payment.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -94,21 +136,21 @@ with right:
     )
 
 # ---------- Sidebar inputs ----------
-st.sidebar.header("Change the plan")
+st.sidebar.header("💗 Build the plan")
 
-st.sidebar.subheader("Savings")
+st.sidebar.subheader("💰 Savings")
 current_saved = st.sidebar.number_input("Already saved", min_value=0.0, value=0.0, step=100.0, format="%.0f")
 biweekly_amount = st.sidebar.number_input("Deposit every 2 weeks", min_value=0.0, value=300.0, step=25.0, format="%.0f")
 first_deposit = st.sidebar.date_input("First deposit date", value=date(2026, 10, 2))
 target_date = st.sidebar.date_input("Target purchase date", value=date(2026, 12, 19))
 
-st.sidebar.subheader("Vehicle")
+st.sidebar.subheader("🚙 Subaru target")
 car_price = st.sidebar.number_input("Negotiated vehicle price", min_value=5000.0, value=21000.0, step=250.0, format="%.0f")
 sales_tax_pct = st.sidebar.number_input("Sales tax %", min_value=0.0, max_value=15.0, value=6.0, step=0.1)
 fees = st.sidebar.number_input("Title / registration / dealer fees", min_value=0.0, value=500.0, step=50.0, format="%.0f")
 trade_credit = st.sidebar.number_input("Trade-in / other credit", min_value=0.0, value=0.0, step=250.0, format="%.0f")
 
-st.sidebar.subheader("Financing")
+st.sidebar.subheader("💳 Financing")
 apr = st.sidebar.number_input("APR %", min_value=0.0, max_value=35.0, value=19.10, step=0.25, help="Starting placeholder based on Experian Q2 2026 average used-auto APR for the 501–600 VantageScore band. Replace this with your actual prequalification APR.")
 term_months = st.sidebar.selectbox("Loan term", options=[36, 48, 60, 66, 72, 75, 84], index=4)
 
@@ -133,7 +175,7 @@ interest_saved = total_interest(payment_saved, term_months, principal_with_savin
 interest_reduction = interest_zero - interest_saved
 
 # ---------- Main dashboard ----------
-st.subheader("Your December snapshot")
+st.subheader("💗 Your December snapshot")
 cols = st.columns(4)
 metrics = [
     ("Biweekly deposits", f"{num_deposits}", f"{money(biweekly_amount)} every 14 days"),
@@ -148,7 +190,7 @@ for col, (label, value, note) in zip(cols, metrics):
             unsafe_allow_html=True,
         )
 
-st.markdown("### $0 down vs. using the savings fund")
+st.markdown("### 💖 $0 down vs. using the savings fund")
 a, b = st.columns(2)
 with a:
     st.markdown("#### If you walked in with $0 down")
@@ -168,7 +210,7 @@ st.success(
 )
 
 # ---------- Savings schedule ----------
-st.markdown("### Biweekly savings path")
+st.markdown("### 🌸 Biweekly savings path")
 if deposit_dates:
     rows = []
     running = current_saved
@@ -188,7 +230,7 @@ else:
     st.warning("Your first deposit date is after the target purchase date. Move one of those dates to create a savings schedule.")
 
 # ---------- Scenario table ----------
-st.markdown("### What different biweekly deposits would do")
+st.markdown("### 💕 What different biweekly deposits would do")
 scenario_amounts = sorted(set([100, 150, 200, 250, 300, 400, 500, 600, int(biweekly_amount)]))
 scenario_rows = []
 for amount in scenario_amounts:
@@ -221,7 +263,7 @@ st.dataframe(
 )
 
 # ---------- Rate sensitivity ----------
-st.markdown("### When you get your real APR, plug it in")
+st.markdown("### 💳 When you get your real APR, plug it in")
 rate_floor = max(0.0, apr - 6)
 rate_ceiling = min(35.0, apr + 6)
 rate_points = [round(rate_floor + i * (rate_ceiling - rate_floor) / 6, 2) for i in range(7)]
@@ -237,7 +279,7 @@ st.dataframe(
 )
 
 # ---------- Deal math ----------
-st.markdown("### Deal math")
+st.markdown("### ✨ Deal math")
 d1, d2, d3, d4 = st.columns(4)
 d1.metric("Vehicle price", money(car_price))
 d2.metric("Estimated sales tax", money(sales_tax))
