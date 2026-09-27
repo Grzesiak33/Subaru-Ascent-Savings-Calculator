@@ -129,13 +129,21 @@ st.markdown(
             font-weight: 750;
             margin-bottom: .45rem;
         }
-        .whiteboard-wrap {
+        [data-testid="stVerticalBlockBorderWrapper"] {
             background: #FFFFFF;
-            border: 9px solid #D6DCE4;
-            border-radius: 22px;
-            padding: .9rem 1.1rem .7rem 1.1rem;
+            border: 9px solid #D6DCE4 !important;
+            border-radius: 22px !important;
             box-shadow: 0 12px 28px rgba(49,74,94,.14), inset 0 0 0 2px #F1F4F7;
-            margin-bottom: .7rem;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:after {
+            content: "";
+            display: block;
+            width: 42%;
+            height: 8px;
+            border-radius: 999px;
+            margin: .45rem auto -.2rem auto;
+            background: linear-gradient(90deg, #E74C9B 0 47%, #67C8FF 47% 100%);
+            box-shadow: 0 3px 8px rgba(0,0,0,.12);
         }
         .board-note {
             text-align: center;
@@ -241,17 +249,19 @@ with hero_text:
     )
 
 with board_col:
-    st.markdown('<div class="whiteboard-wrap"><div class="whiteboard-title">🖊️ Visualization Board</div><div class="whiteboard-subtitle">Ashlee + the goal we are building toward</div>', unsafe_allow_html=True)
-    wife_pic, car_pic = st.columns([0.58, 1.0], gap="small", vertical_alignment="center")
-    with wife_pic:
-        st.image("assets/ashlee.jpg", caption="Ashlee 💗", use_container_width=True)
-    with car_pic:
-        st.image(
-            "https://commons.wikimedia.org/wiki/Special:FilePath/Subaru%20Ascent%20IMG%203632.jpg?width=1200",
-            caption="Her future Subaru Ascent 🚙",
-            use_container_width=True,
-        )
-    st.markdown('<div class="board-note">See it. Fund it. Drive it. 💗💙</div></div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown('<div class="whiteboard-title">🖊️ Visualization Board</div>', unsafe_allow_html=True)
+        st.markdown('<div class="whiteboard-subtitle">Ashlee + the goal we are building toward</div>', unsafe_allow_html=True)
+        wife_pic, car_pic = st.columns([0.58, 1.0], gap="small", vertical_alignment="center")
+        with wife_pic:
+            st.image("assets/ashlee.jpg", caption="Ashlee 💗", use_container_width=True)
+        with car_pic:
+            st.image(
+                "https://commons.wikimedia.org/wiki/Special:FilePath/Subaru%20Ascent%20IMG%203632.jpg?width=1200",
+                caption="Her future Subaru Ascent 🚙",
+                use_container_width=True,
+            )
+        st.markdown('<div class="board-note">See it. Fund it. Drive it. 💗💙</div>', unsafe_allow_html=True)
 # ---------- Sidebar inputs ----------
 st.sidebar.header("💗 Build the plan")
 
