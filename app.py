@@ -115,23 +115,32 @@ st.markdown(
 )
 
 # ---------- Hero ----------
-left, right = st.columns([1.25, 1], vertical_alignment="center")
-with left:
+hero_text, ashlee_col, car_col = st.columns([1.15, 0.46, 0.95], gap="large", vertical_alignment="center")
+
+with hero_text:
     st.markdown(
         """
         <div class="hero">
             <div class="hero-kicker">December car goal</div>
             <h1>💗 Ashlee's Subaru Ascent Fund</h1>
             <p>Build the down payment every two weeks and see exactly how each deposit changes the payment before you walk into the dealership.</p>
-            <div class="hero-love">Pink dashboard. Sensible SUV. Smarter payment.</div>
+            <div class="hero-love">Ashlee + her future Ascent ✨</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-with right:
+
+with ashlee_col:
+    st.image(
+        "assets/ashlee.jpg",
+        caption="Ashlee 💗",
+        use_container_width=True,
+    )
+
+with car_col:
     st.image(
         "https://commons.wikimedia.org/wiki/Special:FilePath/Subaru%20Ascent%20IMG%203632.jpg?width=1200",
-        caption="Subaru Ascent • Photo: Alexander Migl / Wikimedia Commons (CC BY-SA 4.0)",
+        caption="Her future Subaru Ascent 🚙",
         use_container_width=True,
     )
 
