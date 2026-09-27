@@ -252,15 +252,11 @@ with board_col:
     with st.container(border=True):
         st.markdown('<div class="whiteboard-title">🖊️ Visualization Board</div>', unsafe_allow_html=True)
         st.markdown('<div class="whiteboard-subtitle">Ashlee + the goal we are building toward</div>', unsafe_allow_html=True)
-        wife_pic, car_pic = st.columns([0.58, 1.0], gap="small", vertical_alignment="center")
-        with wife_pic:
-            st.image("assets/ashlee.jpg", caption="Ashlee 💗", use_container_width=True)
-        with car_pic:
-            st.image(
-                "https://commons.wikimedia.org/wiki/Special:FilePath/Subaru%20Ascent%20IMG%203632.jpg?width=1200",
-                caption="Her future Subaru Ascent 🚙",
-                use_container_width=True,
-            )
+        st.image(
+            "assets/ChatGPT Image Sep 27, 2026, 04_18_11 PM.png",
+            caption="Ashlee + her future Subaru Ascent 💗🚙",
+            use_container_width=True,
+        )
         st.markdown('<div class="board-note">See it. Fund it. Drive it. 💗💙</div>', unsafe_allow_html=True)
 # ---------- Sidebar inputs ----------
 st.sidebar.header("💗 Build the plan")
