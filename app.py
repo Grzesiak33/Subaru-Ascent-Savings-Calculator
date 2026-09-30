@@ -68,9 +68,14 @@ def tiered_savings_balance(
 
     while cursor <= as_of:
         balance += by_date.get(cursor, 0.0)
-        promo_balance = min(balance, promo_cap)
-        above_balance = max(0.0, balance - promo_cap)
-        balance += promo_balance * promo_daily + above_balance * above_daily
+
+        # Interest accrues after a full day has elapsed, so a deposit made
+        # today still displays as its exact deposited amount today.
+        if cursor < as_of:
+            promo_balance = min(balance, promo_cap)
+            above_balance = max(0.0, balance - promo_cap)
+            balance += promo_balance * promo_daily + above_balance * above_daily
+
         cursor += timedelta(days=1)
 
     return balance, max(0.0, balance - principal)
