@@ -657,10 +657,35 @@ with st.expander("✏️ Change savings, car price, and financing", expanded=Tru
         )
 
 # ---------- Calculations ----------
-deposit_dates = biweekly_dates(first_deposit, target_date)
+today = date.today()
+promo_cap = 1000.0
+
+current_saved, interest_earned_to_date = tiered_savings_balance(
+    deposit_ledger,
+    today,
+    promo_apy_pct,
+    promo_cap,
+    above_cap_apy_pct,
+)
+
+deposit_dates = biweekly_dates(first_deposit, target_date) if recurring_enabled else []
 num_deposits = len(deposit_dates)
-future_deposits = num_deposits * biweekly_amount
-saved_by_target = current_saved + future_deposits
+future_deposits = num_deposits * biweekly_amount if recurring_enabled else 0.0
+
+projected_ledger = build_projected_ledger(
+    deposit_ledger,
+    recurring_enabled,
+    biweekly_amount,
+    first_deposit,
+    target_date,
+)
+saved_by_target, projected_interest_total = tiered_savings_balance(
+    projected_ledger,
+    target_date,
+    promo_apy_pct,
+    promo_cap,
+    above_cap_apy_pct,
+)
 
 sales_tax = car_price * sales_tax_pct / 100
 out_the_door = car_price + sales_tax + fees
@@ -680,6 +705,58 @@ current_progress_pct = 0.0 if down_payment_goal <= 0 else min(100.0, (current_sa
 projected_progress_pct = 0.0 if down_payment_goal <= 0 else min(100.0, (saved_by_target / down_payment_goal) * 100)
 remaining_to_goal = max(0.0, down_payment_goal - current_saved)
 projected_over_under = saved_by_target - down_payment_goal
+
+# ---------- Cotton-candy savings tank ----------
+tank_pct = 0.0 if down_payment_goal <= 0 else min(100.0, (current_saved / down_payment_goal) * 100)
+promo_cap_pct = 0.0 if down_payment_goal <= 0 else min(100.0, (promo_cap / down_payment_goal) * 100)
+car_bottom = max(2.0, min(92.0, tank_pct - 4.0))
+
+st.markdown("## 🍦 Watch the car fund fill up")
+tank_col, growth_col = st.columns([0.8, 1.4], gap="large", vertical_alignment="center")
+
+with tank_col:
+    st.markdown(
+        f"""
+        <div class="tank-wrap">
+            <div class="metric-label">ASHLEE'S CAR FUND</div>
+            <div class="savings-tank">
+                <div class="tank-fill" style="height:{tank_pct:.1f}%;">
+                    <div class="tank-bubbles"></div>
+                </div>
+                <div class="tank-cap-line" style="bottom:{promo_cap_pct:.1f}%;"></div>
+                <div class="tank-car" style="bottom:{car_bottom:.1f}%;">🚙</div>
+            </div>
+            <div class="deposit-total">{money(current_saved)}</div>
+            <div class="deposit-sub">{tank_pct:.1f}% of the {money(down_payment_goal)} goal</div>
+            <div class="tank-cap-label">💙 10% APY bonus zone: first $1,000</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with growth_col:
+    g1, g2, g3 = st.columns(3)
+    g1.metric("Deposits made", money(actual_principal))
+    g2.metric("Est. interest earned", money(interest_earned_to_date))
+    g3.metric("Est. HYSA balance", money(current_saved))
+
+    recurring_text = (
+        f"{money(biweekly_amount)} every 2 weeks is ON"
+        if recurring_enabled
+        else "Not active yet — projection excludes recurring deposits"
+    )
+    st.markdown(
+        f"""
+        <div class="projection-card">
+            <div class="metric-label">INTEREST + DEPOSIT ENGINE</div>
+            <div class="projection-big">{money(saved_by_target)}</div>
+            <div class="metric-note">estimated by {target_date.strftime('%B %d, %Y')} including HYSA growth</div>
+            <div class="interest-pill">{promo_apy_pct:.2f}% APY on the first {money(promo_cap)}</div>
+            <div class="blue-chip">{recurring_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ---------- Live savings status ----------
 st.markdown("## 💗💙 Live car-fund balance")
@@ -734,7 +811,7 @@ with projection_col:
             unsafe_allow_html=True,
         )
 
-st.caption("The big ring is the real balance you have today. The projection uses that balance plus the recurring deposits you set in the sidebar.")
+st.caption("The big ring is the estimated HYSA balance today, including accrued interest. The projection only adds recurring deposits after you switch them on.")
 
 # ---------- Main dashboard ----------
 st.subheader("💗 Your December snapshot")
@@ -766,18 +843,35 @@ with b:
     st.metric("Estimated monthly payment", f"${payment_saved:,.0f}/mo", delta=f"-{money(monthly_savings)}/mo")
     st.metric("Estimated total interest", money(interest_saved), delta=f"-{money(interest_reduction)} interest")
 
-st.success(
-    f"At the current settings, saving {money(biweekly_amount)} every two weeks gives you about {money(saved_by_target)} by {target_date.strftime('%B %d')}. "
-    f"That lowers the estimated payment from about ${payment_zero:,.0f}/month to ${payment_saved:,.0f}/month — roughly {money(monthly_savings)} less each month."
-)
+if recurring_enabled:
+    st.success(
+        f"With the recurring transfer on, the fund is projected to reach about {money(saved_by_target)} by {target_date.strftime('%B %d')}, including estimated HYSA interest. "
+        f"That lowers the estimated payment from about {money(payment_zero)}/month to {money(payment_saved)}/month — roughly {money(monthly_savings)} less each month."
+    )
+else:
+    st.info(
+        f"You have {money(actual_principal)} in saved deposits right now. Recurring deposits are OFF, so the December projection only includes those deposits plus estimated HYSA growth."
+    )
 
 # ---------- Savings schedule ----------
 st.markdown("### 🌸 Biweekly savings path")
-if deposit_dates:
+if recurring_enabled and deposit_dates:
     rows = []
-    running = current_saved
     for i, d in enumerate(deposit_dates, start=1):
-        running += biweekly_amount
+        partial_projected = build_projected_ledger(
+            deposit_ledger,
+            True,
+            biweekly_amount,
+            first_deposit,
+            d,
+        )
+        running, _ = tiered_savings_balance(
+            partial_projected,
+            d,
+            promo_apy_pct,
+            promo_cap,
+            above_cap_apy_pct,
+        )
         rows.append({"Deposit #": i, "Date": d, "Deposit": biweekly_amount, "Running savings": running})
     schedule = pd.DataFrame(rows)
     chart_df = schedule.set_index("Date")[["Running savings"]]
@@ -789,14 +883,27 @@ if deposit_dates:
             hide_index=True,
         )
 else:
-    st.warning("Your first deposit date is after the target purchase date. Move one of those dates to create a savings schedule.")
+    st.info("Recurring deposits are not active yet. Turn them on in Build the plan after you actually set up the automatic transfer.")
 
 # ---------- Scenario table ----------
 st.markdown("### 💕 What different biweekly deposits would do")
 scenario_amounts = sorted(set([100, 150, 200, 250, 300, 400, 500, 600, int(biweekly_amount)]))
 scenario_rows = []
 for amount in scenario_amounts:
-    scenario_saved = current_saved + num_deposits * amount
+    scenario_ledger = build_projected_ledger(
+        deposit_ledger,
+        True,
+        amount,
+        first_deposit,
+        target_date,
+    )
+    scenario_saved, _ = tiered_savings_balance(
+        scenario_ledger,
+        target_date,
+        promo_apy_pct,
+        promo_cap,
+        above_cap_apy_pct,
+    )
     scenario_down = min(scenario_saved, max(0.0, out_the_door - trade_credit))
     scenario_principal = max(0.0, out_the_door - trade_credit - scenario_down)
     scenario_payment = monthly_payment(scenario_principal, apr, term_months)
