@@ -350,6 +350,95 @@ st.markdown(
             }
         }
 
+        .deposit-card {
+            background: linear-gradient(135deg, #FFF0F8 0%, #EAF8FF 100%);
+            border: 2px solid #F1B8D6;
+            border-radius: 22px;
+            padding: 1rem 1.1rem;
+            box-shadow: 0 8px 24px rgba(70,75,110,.08);
+            margin-bottom: .9rem;
+        }
+        .deposit-total {
+            font-size: 2rem;
+            font-weight: 950;
+            color: #5A163A;
+            line-height: 1;
+        }
+        .deposit-sub {
+            color: #277EAE;
+            font-weight: 750;
+            margin-top: .35rem;
+        }
+        .tank-wrap {
+            background: linear-gradient(180deg, #FAFDFF 0%, #FFF5FA 100%);
+            border: 2px solid #D9B7CE;
+            border-radius: 28px;
+            padding: 1rem;
+            box-shadow: 0 12px 28px rgba(59,73,103,.10);
+            text-align: center;
+        }
+        .savings-tank {
+            width: 150px;
+            height: 300px;
+            margin: .4rem auto .7rem auto;
+            border: 7px solid #4D6780;
+            border-radius: 34px 34px 26px 26px;
+            position: relative;
+            overflow: hidden;
+            background:
+                repeating-linear-gradient(to top, transparent 0 58px, rgba(39,126,174,.13) 58px 60px),
+                #FFFFFF;
+            box-shadow: inset 0 0 0 4px #E9F6FD, 0 10px 22px rgba(103,200,255,.16);
+        }
+        .tank-fill {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(180deg, #67C8FF 0%, #B7E9FF 35%, #FF9AC8 68%, #E74C9B 100%);
+            transition: height .8s ease;
+        }
+        .tank-bubbles {
+            position: absolute;
+            inset: 0;
+            background-image:
+                radial-gradient(circle at 25% 75%, rgba(255,255,255,.55) 0 5px, transparent 6px),
+                radial-gradient(circle at 70% 55%, rgba(255,255,255,.48) 0 7px, transparent 8px),
+                radial-gradient(circle at 45% 35%, rgba(255,255,255,.42) 0 4px, transparent 5px);
+        }
+        .tank-car {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.9rem;
+            z-index: 3;
+            transition: bottom .8s ease;
+            filter: drop-shadow(0 3px 3px rgba(0,0,0,.18));
+        }
+        .tank-cap-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 2px dashed #277EAE;
+            z-index: 4;
+        }
+        .tank-cap-label {
+            color: #277EAE;
+            font-size: .78rem;
+            font-weight: 850;
+        }
+        .interest-pill {
+            display: inline-block;
+            padding: .35rem .7rem;
+            border-radius: 999px;
+            background: #E3F6FF;
+            color: #277EAE;
+            border: 1px solid #A8DEFA;
+            font-size: .8rem;
+            font-weight: 850;
+            margin-top: .35rem;
+        }
+
         .blue-chip {
             display: inline-block;
             background: #DDF4FF;
@@ -388,6 +477,70 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+# ---------- Deposit tracker ----------
+st.markdown("## 💵 Add money to the car fund")
+actual_principal = sum(float(d["amount"]) for d in deposit_ledger)
+
+tracker_left, tracker_right = st.columns([1.05, 1.35], gap="large")
+with tracker_left:
+    plural = "s" if len(deposit_ledger) != 1 else ""
+    st.markdown(
+        f"""
+        <div class="deposit-card">
+            <div class="metric-label">SAVED DEPOSITS</div>
+            <div class="deposit-total">{money(actual_principal)}</div>
+            <div class="deposit-sub">{len(deposit_ledger)} saved deposit{plural} • remembered on this device</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with tracker_right:
+    with st.form("add_deposit_form", clear_on_submit=True):
+        d1, d2 = st.columns([0.8, 1.2])
+        with d1:
+            new_deposit_amount = st.number_input(
+                "Deposit amount",
+                min_value=0.01,
+                value=60.0,
+                step=10.0,
+                format="%.2f",
+            )
+        with d2:
+            new_deposit_date = st.date_input("Deposit date", value=date.today())
+        new_deposit_note = st.text_input(
+            "Optional note",
+            placeholder="Example: payday transfer",
+        )
+        add_deposit = st.form_submit_button("💗 Save this deposit", use_container_width=True)
+
+    if add_deposit:
+        st.session_state.deposit_ledger.append(
+            {
+                "date": new_deposit_date.isoformat(),
+                "amount": float(new_deposit_amount),
+                "note": new_deposit_note.strip() or "Car fund deposit",
+                "projected": False,
+            }
+        )
+        save_deposit_ledger()
+        st.success(f"Saved {money(new_deposit_amount)} to Ashlee's car fund.")
+        st.rerun()
+
+with st.expander("📒 Deposit history"):
+    history_df = pd.DataFrame(deposit_ledger)
+    if not history_df.empty:
+        history_df = history_df.sort_values("date", ascending=False)
+        st.dataframe(
+            history_df[["date", "amount", "note"]].style.format({"amount": "$" + "{:,.2f}"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+        if st.button("↩️ Undo most recent deposit", type="secondary"):
+            st.session_state.deposit_ledger.pop()
+            save_deposit_ledger()
+            st.rerun()
+
 # ---------- Mobile-friendly inputs ----------
 st.markdown("## 💗 Build the plan")
 st.caption("Tap any number below to change it. Everything on the page recalculates instantly.")
@@ -397,15 +550,6 @@ with st.expander("✏️ Change savings, car price, and financing", expanded=Tru
 
     with save_col:
         st.markdown("### 💰 Savings")
-        current_saved = st.number_input(
-            "Current balance right now",
-            min_value=0.0,
-            value=0.0,
-            step=50.0,
-            format="%.0f",
-            help="Update this when a real deposit hits the car fund.",
-            key="current_saved",
-        )
         down_payment_goal = st.number_input(
             "Down payment goal",
             min_value=500.0,
@@ -414,23 +558,49 @@ with st.expander("✏️ Change savings, car price, and financing", expanded=Tru
             format="%.0f",
             key="down_payment_goal",
         )
+        recurring_enabled = st.toggle(
+            "Recurring deposit is set up",
+            value=False,
+            help="Leave this off until the automatic transfer is actually active.",
+            key="recurring_enabled",
+        )
         biweekly_amount = st.number_input(
             "Recurring deposit every 2 weeks",
             min_value=0.0,
             value=300.0,
             step=25.0,
             format="%.0f",
+            disabled=not recurring_enabled,
             key="biweekly_amount",
         )
         first_deposit = st.date_input(
             "Next / first recurring deposit",
             value=date(2026, 10, 2),
+            disabled=not recurring_enabled,
             key="first_deposit",
         )
         target_date = st.date_input(
             "Target purchase date",
             value=date(2026, 12, 19),
             key="target_date",
+        )
+        st.markdown("#### 💙 HYSA growth")
+        promo_apy_pct = st.number_input(
+            "APY on first $1,000",
+            min_value=0.0,
+            max_value=100.0,
+            value=10.0,
+            step=0.25,
+            key="promo_apy_pct",
+        )
+        above_cap_apy_pct = st.number_input(
+            "APY above $1,000",
+            min_value=0.0,
+            max_value=25.0,
+            value=0.0,
+            step=0.25,
+            help="Leave at 0 until you enter the account's rate above the first $1,000.",
+            key="above_cap_apy_pct",
         )
 
     with car_col:
