@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import json
 import math
+import time
 
 import pandas as pd
 import streamlit as st
+from streamlit_local_storage import LocalStorage
 
 st.set_page_config(
     page_title="Ashlee's Subaru Ascent Fund",
@@ -39,6 +42,99 @@ def biweekly_dates(first_deposit: date, target_date: date) -> list[date]:
 
 def total_interest(payment: float, months: int, principal: float) -> float:
     return max(0.0, payment * months - principal)
+
+
+def tiered_savings_balance(
+    deposits: list[dict],
+    as_of: date,
+    promo_apy_pct: float,
+    promo_cap: float,
+    above_cap_apy_pct: float = 0.0,
+) -> tuple[float, float]:
+    eligible = [d for d in deposits if date.fromisoformat(d["date"]) <= as_of]
+    if not eligible:
+        return 0.0, 0.0
+
+    by_date: dict[date, float] = {}
+    for dep in eligible:
+        dep_date = date.fromisoformat(dep["date"])
+        by_date[dep_date] = by_date.get(dep_date, 0.0) + float(dep["amount"])
+
+    cursor = min(by_date)
+    balance = 0.0
+    principal = sum(float(d["amount"]) for d in eligible)
+    promo_daily = (1 + promo_apy_pct / 100) ** (1 / 365) - 1
+    above_daily = (1 + above_cap_apy_pct / 100) ** (1 / 365) - 1
+
+    while cursor <= as_of:
+        balance += by_date.get(cursor, 0.0)
+        promo_balance = min(balance, promo_cap)
+        above_balance = max(0.0, balance - promo_cap)
+        balance += promo_balance * promo_daily + above_balance * above_daily
+        cursor += timedelta(days=1)
+
+    return balance, max(0.0, balance - principal)
+
+
+def build_projected_ledger(
+    actual_deposits: list[dict],
+    recurring_enabled: bool,
+    recurring_amount: float,
+    first_recurring: date,
+    target: date,
+) -> list[dict]:
+    projected = [dict(d) for d in actual_deposits]
+    if recurring_enabled and recurring_amount > 0 and first_recurring <= target:
+        d = first_recurring
+        while d <= target:
+            projected.append(
+                {
+                    "date": d.isoformat(),
+                    "amount": float(recurring_amount),
+                    "note": "Projected recurring deposit",
+                    "projected": True,
+                }
+            )
+            d += timedelta(days=14)
+    return projected
+
+
+# ---------- Persistent deposit ledger ----------
+local_store = LocalStorage()
+STORAGE_KEY = "ashlee_ascent_deposit_ledger_v1"
+SEED_LEDGER = [
+    {
+        "date": "2026-09-30",
+        "amount": 60.0,
+        "note": "First deposit to high-yield savings",
+        "projected": False,
+    }
+]
+
+if "deposit_ledger" not in st.session_state:
+    stored_value = local_store.getItem(STORAGE_KEY, key="load_ascent_deposits")
+
+    if "load_ascent_deposits" not in st.session_state and stored_value is None:
+        st.info("Loading your saved car-fund deposits…")
+        st.stop()
+
+    raw_value = st.session_state.get("load_ascent_deposits", stored_value)
+    try:
+        if raw_value:
+            parsed = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+            st.session_state.deposit_ledger = parsed if isinstance(parsed, list) else list(SEED_LEDGER)
+        else:
+            st.session_state.deposit_ledger = list(SEED_LEDGER)
+            local_store.setItem(STORAGE_KEY, json.dumps(st.session_state.deposit_ledger))
+    except Exception:
+        st.session_state.deposit_ledger = list(SEED_LEDGER)
+
+deposit_ledger = st.session_state.deposit_ledger
+
+
+def save_deposit_ledger() -> None:
+    local_store.setItem(STORAGE_KEY, json.dumps(st.session_state.deposit_ledger))
+    time.sleep(0.25)
 
 
 # ---------- Styling ----------
