@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import base64
 import json
 import math
-import time
 
 import pandas as pd
 import streamlit as st
-from streamlit_local_storage import LocalStorage
 
 st.set_page_config(
     page_title="Ashlee's Subaru Ascent Fund",
@@ -105,8 +104,7 @@ def build_projected_ledger(
 
 
 # ---------- Persistent deposit ledger ----------
-local_store = LocalStorage()
-STORAGE_KEY = "ashlee_ascent_deposit_ledger_v1"
+STORAGE_PARAM = "ledger"
 SEED_LEDGER = [
     {
         "date": "2026-09-30",
@@ -116,21 +114,25 @@ SEED_LEDGER = [
     }
 ]
 
+
+def encode_ledger(ledger: list[dict]) -> str:
+    raw = json.dumps(ledger, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def decode_ledger(token: str) -> list[dict]:
+    padding = "=" * (-len(token) % 4)
+    raw = base64.urlsafe_b64decode((token + padding).encode("ascii")).decode("utf-8")
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list):
+        raise ValueError("Invalid ledger")
+    return parsed
+
+
 if "deposit_ledger" not in st.session_state:
-    stored_value = local_store.getItem(STORAGE_KEY, key="load_ascent_deposits")
-
-    if "load_ascent_deposits" not in st.session_state and stored_value is None:
-        st.info("Loading your saved car-fund deposits…")
-        st.stop()
-
-    raw_value = st.session_state.get("load_ascent_deposits", stored_value)
     try:
-        if raw_value:
-            parsed = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
-            st.session_state.deposit_ledger = parsed if isinstance(parsed, list) else list(SEED_LEDGER)
-        else:
-            st.session_state.deposit_ledger = list(SEED_LEDGER)
-            local_store.setItem(STORAGE_KEY, json.dumps(st.session_state.deposit_ledger))
+        token = st.query_params.get(STORAGE_PARAM)
+        st.session_state.deposit_ledger = decode_ledger(token) if token else list(SEED_LEDGER)
     except Exception:
         st.session_state.deposit_ledger = list(SEED_LEDGER)
 
@@ -138,8 +140,7 @@ deposit_ledger = st.session_state.deposit_ledger
 
 
 def save_deposit_ledger() -> None:
-    local_store.setItem(STORAGE_KEY, json.dumps(st.session_state.deposit_ledger))
-    time.sleep(0.25)
+    st.query_params[STORAGE_PARAM] = encode_ledger(st.session_state.deposit_ledger)
 
 
 # ---------- Styling ----------
@@ -494,7 +495,7 @@ with tracker_left:
         <div class="deposit-card">
             <div class="metric-label">SAVED DEPOSITS</div>
             <div class="deposit-total">{money(actual_principal)}</div>
-            <div class="deposit-sub">{len(deposit_ledger)} saved deposit{plural} • remembered on this device</div>
+            <div class="deposit-sub">{len(deposit_ledger)} saved deposit{plural} • saved in this page link</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -531,6 +532,8 @@ with tracker_right:
         save_deposit_ledger()
         st.success(f"Saved {money(new_deposit_amount)} to Ashlee's car fund.")
         st.rerun()
+
+st.caption("Your saved deposits are stored in the page URL, so refreshing this exact page keeps them. After adding deposits, bookmark this page on your phone.")
 
 with st.expander("📒 Deposit history"):
     history_df = pd.DataFrame(deposit_ledger)
