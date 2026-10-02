@@ -1306,6 +1306,281 @@ st.dataframe(
     hide_index=True,
 )
 
+# ---------- Live Ascent market scanner ----------
+st.markdown("---")
+st.markdown("## 🚙 Live Subaru Ascent Value Finder")
+st.caption(
+    "Scans used Subaru Ascent dealer listings around 48152, then ranks them with transparent math. "
+    "Condition scores use listing/history language only — always verify the VIN, title, Carfax/AutoCheck, recalls, and a pre-purchase inspection before buying."
+)
+
+with st.expander("🎯 What counts as a great value?", expanded=True):
+    v1, v2, v3, v4 = st.columns(4)
+    with v1:
+        market_radius = st.number_input(
+            "Search radius (miles)",
+            min_value=5,
+            max_value=50,
+            value=20,
+            step=5,
+            key="market_radius",
+        )
+    with v2:
+        preferred_market_price = st.number_input(
+            "Preferred max price",
+            min_value=10000.0,
+            max_value=40000.0,
+            value=20000.0,
+            step=500.0,
+            format="%.0f",
+            key="preferred_market_price",
+        )
+    with v3:
+        preferred_market_miles = st.number_input(
+            "Preferred max mileage",
+            min_value=30000.0,
+            max_value=150000.0,
+            value=75000.0,
+            step=5000.0,
+            format="%.0f",
+            key="preferred_market_miles",
+        )
+    with v4:
+        ideal_market_miles = st.number_input(
+            "Ideal mileage",
+            min_value=20000.0,
+            max_value=100000.0,
+            value=50000.0,
+            step=5000.0,
+            format="%.0f",
+            key="ideal_market_miles",
+        )
+
+    exclude_severe_history = st.toggle(
+        "Hide salvage / rebuilt / structural-damage listings",
+        value=True,
+        key="exclude_severe_history",
+    )
+
+    st.markdown(
+        """
+        **Value score = 100 points:** price **30** • mileage **25** • condition/history signals **25** •
+        family/road-trip features **15** • model year **5**.
+
+        **Condition is intentionally strict:** if the listing does not actually say clean history, one-owner,
+        service records, CPO/inspection, etc., the app treats history as **unknown**, not clean.
+        Salvage/rebuilt/structural/frame-damage language is heavily penalized and hidden by default.
+
+        **Family features** include captain's chairs, rear climate, heated rear seats, plentiful USBs,
+        power liftgate, EyeSight/adaptive cruise, blind-spot monitoring, rear cross-traffic alert,
+        easy-clean/leather seating, and panoramic roof. AWD is not given extra points because it does not
+        meaningfully separate one Ascent listing from another.
+        """
+    )
+
+scan_col, manual_col = st.columns([0.8, 1.2], gap="large")
+with scan_col:
+    run_market_scan = st.button(
+        "🔎 Scan 20-mile market",
+        type="primary",
+        use_container_width=True,
+    )
+with manual_col:
+    st.caption("The automatic scan uses a dealer-listing marketplace as the discovery layer, then opens listing detail pages for features/history signals.")
+
+if run_market_scan:
+    with st.spinner("Scanning nearby Subaru Ascent listings and scoring the best values…"):
+        live_listings, market_error = scrape_ascent_market("48152", int(market_radius))
+        if live_listings:
+            st.session_state.market_results = rank_ascent_listings(
+                live_listings,
+                preferred_market_price,
+                preferred_market_miles,
+                ideal_market_miles,
+                exclude_severe_history,
+            )
+            st.session_state.market_error = ""
+        else:
+            st.session_state.market_results = []
+            st.session_state.market_error = market_error
+
+with st.expander("➕ Add a listing the scanner missed"):
+    pasted_urls = st.text_area(
+        "Paste one or more listing URLs, one per line",
+        placeholder="https://dealer-or-marketplace.com/listing/...",
+        key="pasted_listing_urls",
+    )
+    analyze_urls = st.button("Analyze pasted listings", use_container_width=True)
+    if analyze_urls:
+        manual_listings: list[dict] = []
+        errors: list[str] = []
+        for line in pasted_urls.splitlines():
+            url = line.strip()
+            if not url:
+                continue
+            try:
+                parsed_listing = generic_listing_from_url(url)
+                if parsed_listing:
+                    manual_listings.append(parsed_listing)
+                else:
+                    errors.append(url)
+            except Exception:
+                errors.append(url)
+
+        if manual_listings:
+            existing = st.session_state.get("market_results", [])
+            combined = existing + manual_listings
+            st.session_state.market_results = rank_ascent_listings(
+                combined,
+                preferred_market_price,
+                preferred_market_miles,
+                ideal_market_miles,
+                exclude_severe_history,
+            )
+        if errors:
+            st.warning("Could not read " + str(len(errors)) + " pasted listing(s). Some dealer sites block automated page access.")
+
+market_results = st.session_state.get("market_results", [])
+market_error = st.session_state.get("market_error", "")
+
+if market_error:
+    st.warning(
+        market_error
+        + " You can still paste individual listing URLs above and the app will score them."
+    )
+
+if market_results:
+    visible_results = market_results[:12]
+    great_count = sum(1 for item in market_results if item["value_score"] >= 70)
+    under_price = sum(1 for item in market_results if item.get("price", 999999) <= preferred_market_price)
+    under_miles = sum(1 for item in market_results if item.get("mileage", 999999) <= preferred_market_miles)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Listings ranked", len(market_results))
+    m2.metric("Strong / excellent", great_count)
+    m3.metric("At or under price goal", under_price)
+    m4.metric("At or under mileage goal", under_miles)
+
+    st.markdown("### 🏆 Best current values")
+    for rank, item in enumerate(visible_results, start=1):
+        price = float(item.get("price") or 0)
+        mileage = float(item.get("mileage") or 0)
+        score = float(item.get("value_score") or 0)
+        dealer = item.get("dealer") or "Dealer"
+        distance = item.get("distance")
+        distance_text = f"{distance:.0f} mi away" if distance is not None else "distance not shown"
+        family_features = item.get("family_features") or []
+        positives = item.get("condition_positives") or []
+        warnings = item.get("condition_warnings") or []
+        score_detail = item.get("score_detail") or {}
+
+        listing_otd = price * (1 + sales_tax_pct / 100) + fees
+        listing_down = min(saved_by_target, max(0.0, listing_otd - trade_credit))
+        listing_principal = max(0.0, listing_otd - trade_credit - listing_down)
+        listing_payment = monthly_payment(listing_principal, apr, term_months)
+
+        with st.container(border=True):
+            top_line, score_line = st.columns([1.7, 0.55], vertical_alignment="center")
+            with top_line:
+                st.markdown(f"#### #{rank} • {item.get('title', 'Subaru Ascent')}")
+                st.markdown(
+                    f"**{money(price)}** • **{mileage:,.0f} miles** • {dealer} • {distance_text}"
+                )
+            with score_line:
+                st.metric("Value score", f"{score:.0f}/100")
+                st.caption(item.get("value_label", ""))
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Price points", f"{score_detail.get('price', 0):.0f}/30")
+            c2.metric("Mileage points", f"{score_detail.get('mileage', 0):.0f}/25")
+            c3.metric("Condition points", f"{score_detail.get('condition', 0):.0f}/25")
+            c4.metric("Family points", f"{score_detail.get('family', 0):.0f}/15")
+
+            if family_features:
+                st.markdown("**Road-trip / family features found:** " + " • ".join(family_features[:8]))
+            else:
+                st.caption("Family-feature detail was not available in the scraped listing text.")
+
+            if positives:
+                st.success("History/condition signals: " + " • ".join(positives))
+            elif not warnings:
+                st.info("Vehicle-history status is unknown from the listing text. Verify it before treating this as a clean-condition vehicle.")
+
+            if warnings:
+                st.warning("History warning: " + " • ".join(warnings))
+
+            st.markdown(
+                f"With the current savings projection and financing settings, this listing would finance about "
+                f"**{money(listing_principal)}** and estimate around **{money(listing_payment)}/month**."
+            )
+
+            if item.get("url"):
+                st.link_button("Open listing ↗", item["url"], use_container_width=True)
+
+    with st.expander("📊 Compare every ranked listing"):
+        comparison_rows = []
+        for item in market_results:
+            comparison_rows.append(
+                {
+                    "Score": item.get("value_score"),
+                    "Year": item.get("year"),
+                    "Vehicle": item.get("title"),
+                    "Price": item.get("price"),
+                    "Mileage": item.get("mileage"),
+                    "Dealer": item.get("dealer"),
+                    "Distance": item.get("distance"),
+                    "Family features": len(item.get("family_features") or []),
+                    "History warnings": "; ".join(item.get("condition_warnings") or []),
+                }
+            )
+        comparison_df = pd.DataFrame(comparison_rows)
+        st.dataframe(
+            comparison_df.style.format(
+                {
+                    "Score": "{:.1f}",
+                    "Price": "$" + "{:,.0f}",
+                    "Mileage": "{:,.0f}",
+                    "Distance": lambda x: "" if pd.isna(x) else f"{x:.0f} mi",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with st.expander("🤖 Free LLM analysis of the top listings"):
+        st.caption(
+            "The score above is always calculated by the transparent algorithm. "
+            "The LLM only explains tradeoffs so it cannot secretly change the ranking."
+        )
+        try:
+            default_hf_token = st.secrets.get("HF_TOKEN", "")
+        except Exception:
+            default_hf_token = ""
+
+        hf_token = st.text_input(
+            "Free Hugging Face token",
+            value=default_hf_token,
+            type="password",
+            help="Optional. A free Hugging Face account/token lets the app ask an open model to summarize the top listings.",
+            key="hf_token",
+        )
+        st.link_button("Get a free Hugging Face token ↗", "https://huggingface.co/settings/tokens")
+        if st.button("Ask AI to compare the top 5", use_container_width=True):
+            try:
+                with st.spinner("AI is reviewing the ranked listings…"):
+                    st.session_state.market_ai_summary = ai_market_summary(market_results, hf_token)
+            except Exception as exc:
+                st.error("AI analysis could not run: " + str(exc))
+
+        if st.session_state.get("market_ai_summary"):
+            st.markdown(st.session_state.market_ai_summary)
+
+else:
+    st.info(
+        "Tap **Scan 20-mile market** to pull current Subaru Ascent listings near 48152. "
+        "The scanner only runs when you ask, so it does not slow down the savings dashboard every time you open it."
+    )
+
 # ---------- Rate sensitivity ----------
 st.markdown("### 💳 When you get your real APR, plug it in")
 rate_floor = max(0.0, apr - 6)
