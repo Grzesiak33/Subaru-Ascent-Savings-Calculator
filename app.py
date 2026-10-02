@@ -4,9 +4,13 @@ from datetime import date, timedelta
 import base64
 import json
 import math
+import re
+from urllib.parse import urljoin
 
 import pandas as pd
+import requests
 import streamlit as st
+from bs4 import BeautifulSoup
 
 st.set_page_config(
     page_title="Ashlee's Subaru Ascent Fund",
@@ -101,6 +105,369 @@ def build_projected_ledger(
             )
             d += timedelta(days=14)
     return projected
+
+
+# ---------- Used Subaru Ascent market scanner ----------
+FAMILY_FEATURES = {
+    "2nd-row captain's chairs": ["captain's chairs", "captains chairs", "rear bucket seats", "2nd row captain"],
+    "Rear climate / A/C": ["rear a/c", "rear ac", "rear climate", "rear-seat climate", "rear seat climate"],
+    "Heated rear seats": ["heated rear seats", "rear heated seats", "heated second row"],
+    "USBs for the kids": ["usb ports", "usb-a", "usb-c", "usb input"],
+    "Power liftgate": ["power liftgate", "power lift gate", "power rear gate"],
+    "EyeSight / adaptive cruise": ["eyesight", "adaptive cruise control"],
+    "Blind-spot monitoring": ["blind spot", "blind-spot"],
+    "Rear cross-traffic alert": ["rear cross traffic", "rear cross-traffic"],
+    "Leather / easy-clean seating": ["leather seats", "leather upholstery", "spill-resistant", "startex"],
+    "Panoramic roof": ["panoramic roof", "panoramic sunroof", "moonroof"],
+}
+
+CLEAN_HISTORY_TERMS = [
+    "no accidents",
+    "accident free",
+    "clean carfax",
+    "clean autocheck",
+    "clean vehicle history",
+]
+ONE_OWNER_TERMS = ["one owner", "1 owner", "one-owner", "1-owner"]
+SERVICE_TERMS = ["service records", "regular maintenance", "maintenance records", "dealer serviced"]
+INSPECTION_TERMS = ["certified pre-owned", "cpo", "multi-point inspection", "multipoint inspection"]
+ACCIDENT_TERMS = ["accident reported", "damage reported", "collision", "accident history"]
+SEVERE_HISTORY_TERMS = [
+    "salvage",
+    "rebuilt title",
+    "rebuilt salvage",
+    "structural damage",
+    "frame damage",
+    "flood damage",
+    "lemon law",
+]
+
+
+def _number_from_text(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = re.search(r"([0-9][0-9,]*(?:\.[0-9]+)?)", value)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _year_from_title(title: str) -> int | None:
+    match = re.search(r"\b(20(?:1[9]|2[0-9]))\b", title or "")
+    return int(match.group(1)) if match else None
+
+
+def _text_has_any(text: str, terms: list[str]) -> bool:
+    lower = (text or "").lower()
+    return any(term in lower for term in terms)
+
+
+def listing_signals(text: str) -> tuple[list[str], list[str], list[str]]:
+    lower = (text or "").lower()
+    family = [label for label, terms in FAMILY_FEATURES.items() if any(term in lower for term in terms)]
+    positives: list[str] = []
+    warnings: list[str] = []
+
+    if _text_has_any(lower, CLEAN_HISTORY_TERMS):
+        positives.append("Listing claims clean / accident-free history")
+    if _text_has_any(lower, ONE_OWNER_TERMS):
+        positives.append("One-owner signal")
+    if _text_has_any(lower, SERVICE_TERMS):
+        positives.append("Maintenance / service-record signal")
+    if _text_has_any(lower, INSPECTION_TERMS):
+        positives.append("Inspection / CPO signal")
+
+    if _text_has_any(lower, ACCIDENT_TERMS):
+        warnings.append("Accident or damage language found")
+    severe = [term for term in SEVERE_HISTORY_TERMS if term in lower]
+    if severe:
+        warnings.append("Severe history flag: " + ", ".join(severe[:2]))
+
+    return family, positives, warnings
+
+
+def value_score(
+    listing: dict,
+    preferred_price: float,
+    preferred_miles: float,
+    ideal_miles: float,
+) -> tuple[float, dict]:
+    price = float(listing.get("price") or 999999)
+    miles = float(listing.get("mileage") or 999999)
+    year = listing.get("year") or 2019
+    family = listing.get("family_features") or []
+    positives = listing.get("condition_positives") or []
+    warnings = listing.get("condition_warnings") or []
+
+    # Price: 30 points. Full credit at <=85% of the preferred ceiling,
+    # then gradually falls through the preferred price and beyond.
+    if price <= preferred_price * 0.85:
+        price_score = 30.0
+    elif price <= preferred_price:
+        frac = (price - preferred_price * 0.85) / max(preferred_price * 0.15, 1)
+        price_score = 30.0 - 8.0 * frac
+    else:
+        price_score = max(0.0, 22.0 * (1 - (price - preferred_price) / 6000.0))
+
+    # Mileage: 25 points. <= ideal is excellent, <= preferred is still strong.
+    if miles <= ideal_miles:
+        mileage_score = 25.0
+    elif miles <= preferred_miles:
+        span = max(preferred_miles - ideal_miles, 1)
+        mileage_score = 25.0 - 7.0 * ((miles - ideal_miles) / span)
+    elif miles <= 100000:
+        span = max(100000 - preferred_miles, 1)
+        mileage_score = 18.0 - 13.0 * ((miles - preferred_miles) / span)
+    else:
+        mileage_score = max(0.0, 5.0 - ((miles - 100000) / 15000.0))
+
+    # Condition/history: 25 points. Unknown is deliberately not treated as "clean."
+    condition_score = 12.0
+    condition_score += min(13.0, len(positives) * 3.5)
+    if any("Accident" in w for w in warnings):
+        condition_score -= 10.0
+    severe = any("Severe history" in w for w in warnings)
+    if severe:
+        condition_score = 0.0
+    condition_score = max(0.0, min(25.0, condition_score))
+
+    # Family-road-trip equipment: 15 points.
+    family_score = min(15.0, len(family) * 1.8)
+
+    # Year: only 5 points so a clean, well-priced older Ascent can still win.
+    if year >= 2022:
+        year_score = 5.0
+    elif year == 2021:
+        year_score = 4.0
+    elif year == 2020:
+        year_score = 3.0
+    else:
+        year_score = 2.0
+
+    total = round(price_score + mileage_score + condition_score + family_score + year_score, 1)
+    if severe:
+        total = min(total, 35.0)
+
+    detail = {
+        "price": round(price_score, 1),
+        "mileage": round(mileage_score, 1),
+        "condition": round(condition_score, 1),
+        "family": round(family_score, 1),
+        "year": round(year_score, 1),
+    }
+    return total, detail
+
+
+def generic_listing_from_url(url: str, timeout: int = 12) -> dict | None:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; AscentValueFinder/1.0; +personal-use)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    response = requests.get(url, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    text = " ".join(soup.stripped_strings)
+    title_tag = soup.find("h1") or soup.find("title")
+    title = title_tag.get_text(" ", strip=True) if title_tag else "Subaru Ascent listing"
+
+    price_match = re.search(r"\$\s*([0-9]{2,3}(?:,[0-9]{3})+)", text)
+    mileage_match = re.search(r"([0-9]{1,3}(?:,[0-9]{3})+)\s*(?:mi\.?|miles)", text, re.I)
+    price = _number_from_text(price_match.group(1)) if price_match else None
+    mileage = _number_from_text(mileage_match.group(1)) if mileage_match else None
+    if price is None or mileage is None or "ascent" not in text.lower():
+        return None
+
+    family, positives, warnings = listing_signals(text)
+    vin_match = re.search(r"\b([A-HJ-NPR-Z0-9]{17})\b", text)
+
+    return {
+        "title": title[:140],
+        "year": _year_from_title(title),
+        "price": price,
+        "mileage": mileage,
+        "dealer": "Listing page",
+        "distance": None,
+        "url": url,
+        "vin": vin_match.group(1) if vin_match else "",
+        "family_features": family,
+        "condition_positives": positives,
+        "condition_warnings": warnings,
+        "source": "Pasted listing",
+        "raw_text": text[:15000],
+    }
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def scrape_ascent_market(zip_code: str, radius_miles: int, max_detail_pages: int = 14) -> tuple[list[dict], str]:
+    url = "https://www.cars.com/shopping/results/"
+    params = [
+        ("stock_type", "used"),
+        ("makes[]", "subaru"),
+        ("models[]", "subaru-ascent"),
+        ("maximum_distance", str(radius_miles)),
+        ("zip", zip_code),
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
+    except Exception as exc:
+        return [], "Live search request failed: " + str(exc)
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    cards = soup.select("div.vehicle-card")
+    listings: list[dict] = []
+    seen: set[str] = set()
+
+    for card in cards:
+        title_el = card.select_one(".title") or card.select_one("h2")
+        price_el = card.select_one(".primary-price")
+        mileage_el = card.select_one(".mileage")
+        dealer_el = card.select_one(".dealer-name")
+        link_el = card.select_one("a.vehicle-card-link") or card.select_one('a[href*="/vehicledetail/"]')
+
+        title = title_el.get_text(" ", strip=True) if title_el else ""
+        price = _number_from_text(price_el.get_text(" ", strip=True) if price_el else "")
+        mileage = _number_from_text(mileage_el.get_text(" ", strip=True) if mileage_el else "")
+        href = link_el.get("href") if link_el else None
+        listing_url = urljoin("https://www.cars.com", href) if href else ""
+
+        if not title or "ascent" not in title.lower() or price is None or mileage is None:
+            continue
+        dedupe_key = listing_url or f"{title}-{price}-{mileage}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        card_text = " ".join(card.stripped_strings)
+        dist_match = re.search(r"(\d+(?:\.\d+)?)\s*mi(?:\.|les)?\s*away", card_text, re.I)
+        distance = float(dist_match.group(1)) if dist_match else None
+        dealer = dealer_el.get_text(" ", strip=True) if dealer_el else "Dealer listing"
+        family, positives, warnings = listing_signals(card_text)
+
+        listings.append(
+            {
+                "title": title,
+                "year": _year_from_title(title),
+                "price": price,
+                "mileage": mileage,
+                "dealer": dealer,
+                "distance": distance,
+                "url": listing_url,
+                "vin": "",
+                "family_features": family,
+                "condition_positives": positives,
+                "condition_warnings": warnings,
+                "source": "Cars.com 20-mile dealer search",
+                "raw_text": card_text,
+            }
+        )
+
+    # Enrich a limited number of results with detail-page feature/history language.
+    for listing in listings[:max_detail_pages]:
+        if not listing["url"]:
+            continue
+        try:
+            detail_response = requests.get(listing["url"], headers=headers, timeout=10)
+            if detail_response.status_code != 200:
+                continue
+            detail_soup = BeautifulSoup(detail_response.text, "html.parser")
+            detail_text = " ".join(detail_soup.stripped_strings)
+            family, positives, warnings = listing_signals(detail_text)
+            listing["family_features"] = sorted(set(listing["family_features"] + family))
+            listing["condition_positives"] = sorted(set(listing["condition_positives"] + positives))
+            listing["condition_warnings"] = sorted(set(listing["condition_warnings"] + warnings))
+            listing["raw_text"] = detail_text[:15000]
+            vin_match = re.search(r"\b([A-HJ-NPR-Z0-9]{17})\b", detail_text)
+            if vin_match:
+                listing["vin"] = vin_match.group(1)
+        except Exception:
+            pass
+
+    if not listings:
+        return [], "The listing site returned a page, but no readable vehicle cards were found. It may be blocking automated requests."
+
+    return listings, ""
+
+
+def rank_ascent_listings(
+    listings: list[dict],
+    preferred_price: float,
+    preferred_miles: float,
+    ideal_miles: float,
+    exclude_severe_history: bool,
+) -> list[dict]:
+    ranked: list[dict] = []
+    for source_listing in listings:
+        listing = dict(source_listing)
+        severe = any("Severe history" in warning for warning in listing.get("condition_warnings", []))
+        if exclude_severe_history and severe:
+            continue
+        score, score_detail = value_score(listing, preferred_price, preferred_miles, ideal_miles)
+        listing["value_score"] = score
+        listing["score_detail"] = score_detail
+        if score >= 82:
+            listing["value_label"] = "Excellent target"
+        elif score >= 70:
+            listing["value_label"] = "Strong value"
+        elif score >= 58:
+            listing["value_label"] = "Worth a look"
+        else:
+            listing["value_label"] = "Below target"
+        ranked.append(listing)
+    return sorted(ranked, key=lambda x: x["value_score"], reverse=True)
+
+
+def ai_market_summary(ranked: list[dict], token: str) -> str:
+    if not token.strip():
+        raise ValueError("Enter a free Hugging Face token first.")
+
+    from huggingface_hub import InferenceClient
+
+    payload = []
+    for i, item in enumerate(ranked[:5], start=1):
+        payload.append(
+            {
+                "rank": i,
+                "title": item.get("title"),
+                "price": item.get("price"),
+                "mileage": item.get("mileage"),
+                "dealer": item.get("dealer"),
+                "score": item.get("value_score"),
+                "family_features": item.get("family_features"),
+                "history_signals": item.get("condition_positives"),
+                "warnings": item.get("condition_warnings"),
+            }
+        )
+
+    prompt = (
+        "You are helping a family evaluate used Subaru Ascent listings. "
+        "The deterministic score is already calculated and must not be reordered. "
+        "Explain the tradeoffs in the top listings using only the supplied facts. "
+        "Do not assume a clean title or accident-free history when it is not stated. "
+        "Emphasize price, mileage, family road-trip features, and condition/history uncertainty. "
+        "Keep the answer concise and practical.\n\n"
+        + json.dumps(payload, indent=2)
+    )
+
+    client = InferenceClient(token=token.strip())
+    response = client.chat_completion(
+        model="Qwen/Qwen2.5-7B-Instruct",
+        messages=[
+            {"role": "system", "content": "Be factual, concise, and careful about unknown vehicle history."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=650,
+        temperature=0.2,
+    )
+    return response.choices[0].message.content
 
 
 # ---------- Persistent deposit ledger ----------
